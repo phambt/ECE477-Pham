@@ -43,7 +43,8 @@ void sendMessage(int uart_fd, const char* message) {
     if (bytes_written != len) {
         std::cerr << "Failed to write to UART" << std::endl;
     } else {
-        std::cout << "Message sent: " << message;
+        // std::cout << "Message sent: " << message;
+        std::cout << "Sending...";
     }
 }
 
@@ -72,7 +73,7 @@ bool receiveMessage(int uart_fd) {
     
     if (bytes_read > 0) {
         // Print each byte as character to ensure the data is printed correctly
-        std::cout << "Message received from STM32: ";
+        std::cout << "\n\nMessage received from STM32: ";
         for (ssize_t i = 0; i < bytes_read; ++i) {
             std::cout << static_cast<char>(buffer[i]);
         }
@@ -114,18 +115,45 @@ int main() {
     }
 
     // Example message to send to STM32
-    const char* message = "Jetson says hello!\n";
+    const char* message = "AF";
+    bool sending = false;
     // sendMessage(uart_fd, message);
 
     // Main loop: Wait for a response before sending the next message
-    while (true) {
+    // sendMessage(uart_fd, message);
+    while (true) { 
+        //recieve & send until receive
+        if( !sending ){
+            if( receiveMessage(uart_fd) ){
+                sending = true;
+            }
+        }
+        else{
+            sendMessage(uart_fd, message);
+
+            if( isDataAvailable(uart_fd) && receiveMessage(uart_fd) ){
+                sending = false;
+            }
+        }
+
+        // recieve and send on recieve once
         // Check if data is available before sending another message
         // if (isDataAvailable(uart_fd)) {
-        if (receiveMessage(uart_fd)) {
-            // Only send the next message after receiving a response
-            // sendMessage(uart_fd, message);
-        }
+        // if (receiveMessage(uart_fd)) {
+        //     // Only send the next message after receiving a response
+        //     while( !receiveMessage(uart_fd) ){
+        //         std::cout << "sending" << std::endl;
+        //         sendMessage(uart_fd, message);
+
+        //     }
         // }
+        // }
+
+        // std::cout << "sending" << std::endl;
+
+        // test send
+        // sendMessage(uart_fd, message);
+
     }
 
     // Close UART
