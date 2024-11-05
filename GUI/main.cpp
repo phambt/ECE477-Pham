@@ -67,7 +67,7 @@ std::string formatTime(int totalSeconds) {
 
 int main() {
     // Initialize OpenCV camera
-    cv::VideoCapture cap(0);
+    cv::VideoCapture cap(1);
     if (!cap.isOpened()) {
         std::cerr << "Error: Could not open camera." << std::endl;
         return -1;
