@@ -66,14 +66,17 @@ std::string formatTime(int totalSeconds) {
 }
 
 int main() {
-    // Initialize OpenCV camera
-    cv::VideoCapture cap(1); 
-    if (!cap.isOpened()) {
-        std::cerr << "Error: Could not open camera." << std::endl;
+    // Initialize two cameras
+    cv::VideoCapture cam1(0);
+    cv::VideoCapture cam2(2);
+    if (!cam1.isOpened() || !cam2.isOpened()) {
+        std::cerr << "Error: Could not open one or both cameras." << std::endl;
         return -1;
     }
-    cap.set(cv::CAP_PROP_FRAME_WIDTH, 640);
-    cap.set(cv::CAP_PROP_FRAME_HEIGHT, 480);
+    cam1.set(cv::CAP_PROP_FRAME_WIDTH, 640);
+    cam1.set(cv::CAP_PROP_FRAME_HEIGHT, 480);
+    cam2.set(cv::CAP_PROP_FRAME_WIDTH, 640);
+    cam2.set(cv::CAP_PROP_FRAME_HEIGHT, 480);
 
     // Initialize SDL2 for game controller input
     if (SDL_Init(SDL_INIT_GAMECONTROLLER) < 0) {
@@ -87,25 +90,16 @@ int main() {
         return 1;
     }
 
-    // Load the overlay image
-    cv::Mat overlayImage = cv::imread("NICE.png");
-    if (overlayImage.empty()) {
-        std::cerr << "Error: Could not load overlay image." << std::endl;
-        return -1;
-    }
-    cv::resize(overlayImage, overlayImage, cv::Size(640, 480)); // Resize to match camera frame size
-
     // Create a window to display the camera output
     cv::namedWindow("Camera Output", cv::WINDOW_AUTOSIZE);
 
-    // Main loop flag, overlay text, timer, and toggle variables
     bool quit = false;
     bool timerRunning = false;
-    bool showCameraFeed = true; // Flag to toggle between camera feed and overlay image
-    bool toggleState = false;   // Initial toggle state
-    std::string overlayText = "Mode: Slow"; // Default overlay text
+    bool toggleCamera = true; // Start with cam1
+    bool toggleState = false;
+    std::string overlayText = "Mode: Slow";
     auto startTime = std::chrono::steady_clock::now();
-    int elapsedTime = 0; // in seconds
+    int elapsedTime = 0;
 
     while (!quit) {
         // Handle SDL events
@@ -116,23 +110,22 @@ int main() {
             }
         }
 
-        // Check if the "A" button is pressed to toggle display
+        // Toggle camera source with the "A" button
         if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_A)) {
-            showCameraFeed = !showCameraFeed; // Toggle the display
+            toggleCamera = !toggleCamera;
             SDL_Delay(200); // Small delay to avoid rapid toggling
         }
 
-        // Capture frame from the camera if the camera feed is active
+        // Capture frame from the active camera
         cv::Mat frame;
-        if (showCameraFeed) {
-            cap >> frame;
-            if (frame.empty()) {
-                std::cerr << "Error: Could not capture frame." << std::endl;
-                break;
-            }
+        if (toggleCamera) {
+            cam1 >> frame;
         } else {
-            // Use the overlay image instead of the camera frame
-            frame = overlayImage.clone();
+            cam2 >> frame;
+        }
+        if (frame.empty()) {
+            std::cerr << "Error: Could not capture frame." << std::endl;
+            break;
         }
 
         // Handle controller bumper toggling for "Toggle 1" or "Toggle 0"
@@ -142,7 +135,7 @@ int main() {
         if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_START)) {
             timerRunning = !timerRunning;
             if (timerRunning) {
-                startTime = std::chrono::steady_clock::now(); // Reset start time
+                startTime = std::chrono::steady_clock::now();
             } else {
                 elapsedTime += std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - startTime).count();
             }
@@ -160,7 +153,6 @@ int main() {
             currentDisplayTime += std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - startTime).count();
         }
 
-        // Set up positions for the text and background rectangle
         std::string timeText = "Time: " + formatTime(currentDisplayTime);
         int textX = 50, textY = 50;
         int textWidth = 300, textHeight = 80;
@@ -169,7 +161,7 @@ int main() {
         cv::Mat overlay;
         frame.copyTo(overlay);
         cv::rectangle(overlay, cv::Point(textX - 10, textY - 40), cv::Point(textX + textWidth, textY + textHeight - 10), cv::Scalar(0, 0, 0), cv::FILLED);
-        double alpha = 0.6; // Transparency factor
+        double alpha = 0.6;
         cv::addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame);
 
         // Display overlay text and formatted timer on the camera frame
@@ -189,7 +181,8 @@ int main() {
     }
 
     // Clean up
-    cap.release();
+    cam1.release();
+    cam2.release();
     SDL_GameControllerClose(controller);
     SDL_Quit();
     cv::destroyAllWindows();
