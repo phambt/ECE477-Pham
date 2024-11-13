@@ -36,15 +36,39 @@ int configureUART(int uart_fd) {
     return tcsetattr(uart_fd, TCSANOW, &options); // Apply attributes
 }
 
-// Function to send data to STM32
-void sendMessage(int uart_fd, const char* message) {
-    size_t len = strlen(message);
-    ssize_t bytes_written = write(uart_fd, message, len);
-    if (bytes_written != len) {
-        std::cerr << "Failed to write to UART" << std::endl;
+// Function to send a 16-bit number (two bytes) to STM32
+void sendMessage(int uart_fd, uint16_t number) {
+    uint8_t buffer[2];
+    buffer[0] = number >> 8;    // High byte
+    buffer[1] = number & 0xFF;  // Low byte
+
+    // Clear the UART output buffer to avoid data clogs
+    tcflush(uart_fd, TCOFLUSH);
+
+    // Send both bytes together as a single buffer
+    ssize_t bytes_written = write(uart_fd, buffer, 2);
+    if (bytes_written != 2) {
+        std::cerr << "Failed to write both bytes to UART" << std::endl;
     } else {
-        // std::cout << "Message sent: " << message;
-        std::cout << "Sending...";
+        std::cout << "Sending number: " << number << " (0x" << std::hex << number << std::dec << ")" << std::endl;
+    }
+    usleep(100000); // Delay of 100ms after each send attempt
+}
+
+
+
+// Function to receive a 16-bit number (two bytes) from STM32
+bool receiveMessage(uint16_t uart_fd) {
+    uint8_t buffer[2];
+    ssize_t bytes_read = read(uart_fd, buffer, 2);
+
+    if (bytes_read == 2) {
+        uint16_t received_number = (buffer[0] << 8) | buffer[1];
+        std::cout << "\nMessage received from STM32: " << received_number << std::endl;
+        return true; // Data was received
+    } else {
+        std::cerr << "Failed to read from UART or insufficient data received" << std::endl;
+        return false; // No data was received
     }
 }
 
@@ -66,38 +90,6 @@ bool isDataAvailable(int uart_fd) {
 
     return (result > 0 && FD_ISSET(uart_fd, &read_fds));
 }
-bool receiveMessage(int uart_fd) {
-    uint8_t buffer[256];  // Using uint8_t buffer instead of char
-    memset(buffer, 0, sizeof(buffer));
-    ssize_t bytes_read = read(uart_fd, buffer, sizeof(buffer) - 1);
-    
-    if (bytes_read > 0) {
-        // Print each byte as character to ensure the data is printed correctly
-        std::cout << "\n\nMessage received from STM32: ";
-        for (ssize_t i = 0; i < bytes_read; ++i) {
-            std::cout << static_cast<char>(buffer[i]);
-        }
-        std::cout << std::endl;
-        return true; // Data was received
-    } else {
-        std::cerr << "Failed to read from UART or no data received" << std::endl;
-        return false; // No data was received
-    }
-}
-
-// Function to receive data from STM32
-// bool receiveMessage(int uart_fd) {
-//     char buffer[256];
-//     memset(buffer, 0, sizeof(buffer));
-//     ssize_t bytes_read = read(uart_fd, buffer, sizeof(buffer) - 1);
-//     if (bytes_read > 0) {
-//         std::cout << "Message received from STM32: " << buffer << std::endl;
-//         return true; // Data was received
-//     } else {
-//         std::cerr << "Failed to read from UART or no data received" << std::endl;
-//         return false; // No data was received
-//     }
-// }
 
 int main() {
     // Open UART device in blocking mode (without O_NDELAY)
@@ -114,46 +106,36 @@ int main() {
         return -1;
     }
 
-    // Example message to send to STM32
-    const char* message = "AF";
-    bool sending = false;
-    // sendMessage(uart_fd, message);
+    // Example 16-bit number to send to STM32
+    uint16_t number = 61367;
+    bool sending = true;
+
+    bool first_send = true;
 
     // Main loop: Wait for a response before sending the next message
-    // sendMessage(uart_fd, message);
     while (true) { 
-        //recieve & send until receive
-        if( !sending ){
-            if( receiveMessage(uart_fd) ){
-                sending = true;
-            }
-        }
-        else{
-            sendMessage(uart_fd, message);
+        // if( first_send ){
+        //     sendMessage(uart_fd, number);
 
-            if( isDataAvailable(uart_fd) && receiveMessage(uart_fd) ){
-                sending = false;
-            }
-        }
-
-        // recieve and send on recieve once
-        // Check if data is available before sending another message
-        // if (isDataAvailable(uart_fd)) {
-        // if (receiveMessage(uart_fd)) {
-        //     // Only send the next message after receiving a response
-        //     while( !receiveMessage(uart_fd) ){
-        //         std::cout << "sending" << std::endl;
-        //         sendMessage(uart_fd, message);
-
+        //     if (isDataAvailable(uart_fd) && receiveMessage(uart_fd)) {
+        //         std::cout << " X " << std::endl;
+        //         sending = false;
+        //         first_send = false;
         //     }
         // }
-        // }
+        
+        if (!sending) {
+            if (receiveMessage(uart_fd)) {
+                sending = true;
+            }
+        } else {
+            sendMessage(uart_fd, number);
 
-        // std::cout << "sending" << std::endl;
-
-        // test send
-        // sendMessage(uart_fd, message);
-
+            if (isDataAvailable(uart_fd) && receiveMessage(uart_fd)) {
+                sending = false;
+                first_send = false;
+            }
+        }
     }
 
     // Close UART
