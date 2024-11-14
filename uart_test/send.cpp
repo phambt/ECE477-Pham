@@ -53,7 +53,7 @@ void sendMessage(int uart_fd, uint64_t number) {
     if (bytes_written != 8) {
         std::cerr << "Failed to write 8 bytes to UART" << std::endl;
     } else {
-        // std::cout << "Sending number: " << number << " (0x" << std::hex << number << std::dec << ")" << std::endl;
+        std::cout << "Sending number: " << number << " (0x" << std::hex << number << std::dec << ")" << std::endl;
     }
 
     // usleep(100000); // Delay of 100ms after each send attempt
@@ -69,11 +69,11 @@ bool receiveMessage(int uart_fd) {
     if (bytes_read == 8) {
         // Extract the number from the first two bytes
         uint16_t received_number = (buffer[0] << 8) | buffer[1];
-        // std::cout << "\nMessage received from STM32: " << received_number << std::endl;
+        std::cout << "\nMessage received from STM32: " << received_number << std::endl;
 
         // Print the rest of the bytes for debugging (optional)
-        std::cout << "Received bytes:";
-        for (int i = 0; i < 8; i++) {
+        std::cout << "Remaining bytes:";
+        for (int i = 2; i < 8; i++) {
             std::cout << " " << std::hex << static_cast<int>(buffer[i]) << std::dec;
         }
         std::cout << std::endl;
@@ -119,46 +119,16 @@ int main() {
         return -1;
     }
 
-    // Example 16-bit number to send to STM32
-    long int number = 48358651674278655;
+    // Example number to send to STM32
+    int number = 11259375;
     bool sending = true;
 
     bool first_send = true;
 
     // Main loop: Wait for a response before sending the next message
     while (true) { 
-        // if( first_send ){
-        //     sendMessage(uart_fd, number);
 
-        //     if (isDataAvailable(uart_fd) && receiveMessage(uart_fd)) {
-        //         std::cout << " X " << std::endl;
-        //         sending = false;
-        //         first_send = false;
-        //     }
-        // }
-        
-        // if (!sending) {
-        //     if (receiveMessage(uart_fd)) {
-        //         std::cout << "\nWaiting to recieve... " << std::endl;
-        //         sending = true;
-        //     }
-        // } else {
-        //     std::cout << "Sending" << std::endl;
-        //     sendMessage(uart_fd, number);
-
-        //     if (receiveMessage(uart_fd)) {
-        //         sending = false;
-        //         first_send = false;
-        //     }
-        // }
-
-        if(sending){
-            std::cout << "Sending" << std::endl;
-            sendMessage(uart_fd, number);
-            receiveMessage(uart_fd);
-        }
-
-        // sendMessage(uart_fd, number); // keep sending (test)
+        sendMessage(uart_fd, number); // keep sending (test)
 
     }
 

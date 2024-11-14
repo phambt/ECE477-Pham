@@ -36,52 +36,15 @@ int configureUART(int uart_fd) {
     return tcsetattr(uart_fd, TCSANOW, &options); // Apply attributes
 }
 
-// Function to send a 16-bit number (two bytes) to STM32
-void sendMessage(int uart_fd, uint64_t number) {
-    uint8_t buffer[8];
-
-    // Break down the 64-bit number into 8 bytes
-    for (int i = 0; i < 8; i++) {
-        buffer[i] = (number >> (8 * (7 - i))) & 0xFF; // Extract each byte
-    }
-
-    // Clear the UART output buffer to avoid data clogs
-    tcflush(uart_fd, TCOFLUSH);
-
-    // Send all 8 bytes together as a single buffer
-    ssize_t bytes_written = write(uart_fd, buffer, 8);
-    if (bytes_written != 8) {
-        std::cerr << "Failed to write 8 bytes to UART" << std::endl;
+// Function to send data to STM32
+void sendMessage(int uart_fd, const char* message) {
+    size_t len = strlen(message);
+    ssize_t bytes_written = write(uart_fd, message, len);
+    if (bytes_written != len) {
+        std::cerr << "Failed to write to UART" << std::endl;
     } else {
-        // std::cout << "Sending number: " << number << " (0x" << std::hex << number << std::dec << ")" << std::endl;
-    }
-
-    // usleep(100000); // Delay of 100ms after each send attempt
-}
-
-
-
-// Function to receive a 64-bit number (8 bytes) from STM32
-bool receiveMessage(int uart_fd) {
-    uint8_t buffer[8];
-    ssize_t bytes_read = read(uart_fd, buffer, 8);
-
-    if (bytes_read == 8) {
-        // Extract the number from the first two bytes
-        uint16_t received_number = (buffer[0] << 8) | buffer[1];
-        // std::cout << "\nMessage received from STM32: " << received_number << std::endl;
-
-        // Print the rest of the bytes for debugging (optional)
-        std::cout << "Received bytes:";
-        for (int i = 0; i < 8; i++) {
-            std::cout << " " << std::hex << static_cast<int>(buffer[i]) << std::dec;
-        }
-        std::cout << std::endl;
-
-        return true; // Data was received
-    } else {
-        std::cerr << "Failed to read 8 bytes from UART or insufficient data received" << std::endl;
-        return false; // No data was received
+        // std::cout << "Message sent: " << message;
+        std::cout << "Sending...";
     }
 }
 
@@ -103,6 +66,38 @@ bool isDataAvailable(int uart_fd) {
 
     return (result > 0 && FD_ISSET(uart_fd, &read_fds));
 }
+bool receiveMessage(int uart_fd) {
+    uint8_t buffer[256];  // Using uint8_t buffer instead of char
+    memset(buffer, 0, sizeof(buffer));
+    ssize_t bytes_read = read(uart_fd, buffer, sizeof(buffer) - 1);
+    
+    if (bytes_read > 0) {
+        // Print each byte as character to ensure the data is printed correctly
+        std::cout << "\n\nMessage received from STM32: ";
+        for (ssize_t i = 0; i < bytes_read; ++i) {
+            std::cout << static_cast<char>(buffer[i]);
+        }
+        std::cout << std::endl;
+        return true; // Data was received
+    } else {
+        std::cerr << "Failed to read from UART or no data received" << std::endl;
+        return false; // No data was received
+    }
+}
+
+// Function to receive data from STM32
+// bool receiveMessage(int uart_fd) {
+//     char buffer[256];
+//     memset(buffer, 0, sizeof(buffer));
+//     ssize_t bytes_read = read(uart_fd, buffer, sizeof(buffer) - 1);
+//     if (bytes_read > 0) {
+//         std::cout << "Message received from STM32: " << buffer << std::endl;
+//         return true; // Data was received
+//     } else {
+//         std::cerr << "Failed to read from UART or no data received" << std::endl;
+//         return false; // No data was received
+//     }
+// }
 
 int main() {
     // Open UART device in blocking mode (without O_NDELAY)
@@ -119,46 +114,45 @@ int main() {
         return -1;
     }
 
-    // Example 16-bit number to send to STM32
-    long int number = 48358651674278655;
+    // Example message to send to STM32
+    const char* message = "1234";
     bool sending = true;
-
-    bool first_send = true;
+    // sendMessage(uart_fd, message);
 
     // Main loop: Wait for a response before sending the next message
+    // sendMessage(uart_fd, message);
     while (true) { 
-        // if( first_send ){
-        //     sendMessage(uart_fd, number);
+        //recieve & send until receive
+        if( !sending ){
+            if( receiveMessage(uart_fd) ){
+                sending = true;
+            }
+        }
+        else{
+            sendMessage(uart_fd, message);
 
-        //     if (isDataAvailable(uart_fd) && receiveMessage(uart_fd)) {
-        //         std::cout << " X " << std::endl;
-        //         sending = false;
-        //         first_send = false;
-        //     }
-        // }
-        
-        // if (!sending) {
-        //     if (receiveMessage(uart_fd)) {
-        //         std::cout << "\nWaiting to recieve... " << std::endl;
-        //         sending = true;
-        //     }
-        // } else {
-        //     std::cout << "Sending" << std::endl;
-        //     sendMessage(uart_fd, number);
-
-        //     if (receiveMessage(uart_fd)) {
-        //         sending = false;
-        //         first_send = false;
-        //     }
-        // }
-
-        if(sending){
-            std::cout << "Sending" << std::endl;
-            sendMessage(uart_fd, number);
-            receiveMessage(uart_fd);
+            if( isDataAvailable(uart_fd) && receiveMessage(uart_fd) ){
+                sending = false;
+            }
         }
 
-        // sendMessage(uart_fd, number); // keep sending (test)
+        // recieve and send on recieve once
+        // Check if data is available before sending another message
+        // if (isDataAvailable(uart_fd)) {
+        // if (receiveMessage(uart_fd)) {
+        //     // Only send the next message after receiving a response
+        //     while( !receiveMessage(uart_fd) ){
+        //         std::cout << "sending" << std::endl;
+        //         sendMessage(uart_fd, message);
+
+        //     }
+        // }
+        // }
+
+        // std::cout << "sending" << std::endl;
+
+        // test send
+        // sendMessage(uart_fd, message);
 
     }
 
