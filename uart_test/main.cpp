@@ -4,6 +4,13 @@
 #include <unistd.h>     // For read/write
 #include <cstring>      // For memset
 
+int SIZE = 12;
+
+// Struct for 12 bytes of data
+typedef struct {
+    uint8_t bytes[12];
+} uint96_t;
+
 // Function to configure UART for both Jetson and STM32
 int configureUART(int uart_fd) {
     struct termios options;
@@ -37,23 +44,28 @@ int configureUART(int uart_fd) {
 }
 
 // Function to send a 16-bit number (two bytes) to STM32
-void sendMessage(int uart_fd, uint64_t number) {
-    uint8_t buffer[8];
+void sendMessage(int uart_fd, uint96_t number) {
+    uint8_t buffer[SIZE];
 
-    // Break down the 64-bit number into 8 bytes
-    for (int i = 0; i < 8; i++) {
-        buffer[i] = (number >> (8 * (7 - i))) & 0xFF; // Extract each byte
+    // Copy each byte from the struct into the buffer
+    for (int i = 0; i < SIZE; i++) {
+        buffer[i] = number.bytes[i]; // Extract each byte
     }
 
     // Clear the UART output buffer to avoid data clogs
     tcflush(uart_fd, TCOFLUSH);
 
     // Send all 8 bytes together as a single buffer
-    ssize_t bytes_written = write(uart_fd, buffer, 8);
-    if (bytes_written != 8) {
+    ssize_t bytes_written = write(uart_fd, buffer, SIZE);
+    if (bytes_written != SIZE) {
         std::cerr << "Failed to write 8 bytes to UART" << std::endl;
-    } else {
-        std::cout << "Sending number: " << number << " (0x" << std::hex << number << std::dec << ")" << std::endl;
+    } 
+    else {
+        std::cout << "Sending number: "; // Print out the num were sending (debugging)
+        for( int i = 0; i < SIZE; i++ ){
+            std::cout << " " << std::hex << static_cast<int>(buffer[i]) << std::dec;
+        }
+        std::cout << std::endl;
     }
 
     // usleep(100000); // Delay of 100ms after each send attempt
@@ -63,17 +75,17 @@ void sendMessage(int uart_fd, uint64_t number) {
 
 // Function to receive a 64-bit number (8 bytes) from STM32
 bool receiveMessage(int uart_fd) {
-    uint8_t buffer[8];
-    ssize_t bytes_read = read(uart_fd, buffer, 8);
+    uint8_t buffer[SIZE];
+    ssize_t bytes_read = read(uart_fd, buffer, SIZE);
 
-    if (bytes_read == 8) {
+    if (bytes_read == SIZE) {
         // Extract the number from the first two bytes
-        uint16_t received_number = (buffer[0] << 8) | buffer[1];
+        // uint16_t received_number = (buffer[0] << 8) | buffer[1];
         // std::cout << "\nMessage received from STM32: " << received_number << std::endl;
 
         // Print the rest of the bytes for debugging (optional)
         std::cout << "Received bytes:";
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < SIZE; i++) {
             std::cout << " " << std::hex << static_cast<int>(buffer[i]) << std::dec;
         }
         std::cout << std::endl;
@@ -120,10 +132,8 @@ int main() {
     }
 
     // Example 16-bit number to send to STM32
-    uint64_t number = 12379814828615335851ULL;
+    uint96_t number = { .bytes = { 0x11, 0x22, 0x43, 0x34, 0x69, 0xAB, 0xDE, 0xAD, 0xBE, 0xEF, 0x0B, 0xC0 } };
     bool sending = true;
-
-    bool first_send = true;
 
     // Main loop: Wait for a response before sending the next message
     while (true) { 
