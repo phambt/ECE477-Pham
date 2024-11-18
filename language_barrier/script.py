@@ -1,4 +1,4 @@
 # script.py
 
-def greet(name):
-    return f"Please kill youself, {name}!"
+def multiply_array_by_two(numbers):
+    return [n * 2 for n in numbers]

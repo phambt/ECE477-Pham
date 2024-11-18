@@ -7,7 +7,7 @@ std::vector<double> call_getAngle(double x, double y, double z) {
     std::vector<double> jointAngles;
 
     // Change the current working directory to the 'ikpy' folder
-    if (chdir("../ikpy") != 0) {
+    if (chdir("/home/ece477/Desktop/477/ikpy") != 0) {
         perror("chdir failed");
         return jointAngles; // Return an empty vector on error
     }
