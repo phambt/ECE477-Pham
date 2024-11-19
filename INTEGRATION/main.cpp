@@ -100,7 +100,7 @@ bool receiveMessage(int uart_fd) {
 
         return true; // Data was received
     } else {
-        std::cerr << "Failed to read 8 bytes from UART or insufficient data received" << std::endl;
+        std::cerr << "Failed to read 12 bytes from UART or insufficient data received" << std::endl;
         return false; // No data was received
     }
 }
@@ -160,18 +160,22 @@ void handleToggle(SDL_GameController* controller, bool& toggleState, std::string
 // Helper function to scale, apply sign, and convert to bytes
 auto convertToMotorBytes = [](int value) -> std::array<uint8_t, 2> {
     std::array<uint8_t, 2> result;
-    
-    // Scale value
-    int scaledValue = value / 6000;
-    
-    // Determine sign and apply it to the high nibble (top 4 bits)
-    if (scaledValue >= 0) {
-        result[0] = (scaledValue & 0x0F) | 0xF0; // Positive: top 4 bits 1111
+
+    // Clamp the value to fit within 12 bits
+    if (value > 4095) value = 4095;   // Max positive value in 12 bits
+    if (value < -4095) value = -4095; // Max negative value in 12 bits
+
+    // Encode the sign in the top 4 bits and the magnitude in the remaining 12 bits
+    if (value >= 0) {
+        result[0] = (value >> 8) & 0x0F; // Upper 4 bits of the value
+        result[0] |= 0xF0;               // Set the top 4 bits to indicate positive
     } else {
-        result[0] = (scaledValue & 0x0F); // Negative: top 4 bits 0000
+        value = -value;                  // Convert to positive for encoding
+        result[0] = (value >> 8) & 0x0F; // Upper 4 bits of the value
+        result[0] |= 0x00;               // Set the top 4 bits to indicate negative
     }
-    
-    result[1] = static_cast<uint8_t>(scaledValue & 0xFF); // Lower 8 bits
+
+    result[1] = value & 0xFF;            // Lower 8 bits of the value
 
     return result;
 };
@@ -183,12 +187,24 @@ uint96_t updateUARTNum(int leftStickX, int leftStickY, int rightStickX, int righ
     std::array<uint8_t, 2> motor1, motor2, motor3, motor4, motor5, motor6;
 
     // Convert stick values to motor bytes
-    motor1 = convertToMotorBytes(leftStickX);
-    motor2 = convertToMotorBytes(leftStickY);
-    motor3 = convertToMotorBytes(rightStickX);
-    motor4 = convertToMotorBytes(rightStickY);
-    motor5 = convertToMotorBytes(leftStickX + leftStickY); // Example additional motors
-    motor6 = convertToMotorBytes(rightStickX + rightStickY);
+    // motor1 = convertToMotorBytes(leftStickX);
+    // motor2 = convertToMotorBytes(leftStickY);
+    // motor3 = convertToMotorBytes(rightStickX);
+    // motor4 = convertToMotorBytes(rightStickY);
+    // motor5 = convertToMotorBytes(leftStickX + leftStickY); // Example additional motors
+    // motor6 = convertToMotorBytes(rightStickX + rightStickY);
+
+    // Test with 90 degrees for each motor
+    // motor1 = convertToMotorBytes(180);
+    if( leftStickX | leftStickY ){ motor1 = convertToMotorBytes(180); }
+    else{ 
+        motor1 = convertToMotorBytes(-180);
+    }
+    motor2 = convertToMotorBytes(90);
+    motor3 = convertToMotorBytes(180);
+    motor4 = convertToMotorBytes(-45);
+    motor5 = convertToMotorBytes(-90);
+    motor6 = convertToMotorBytes(-180);
 
     // Concatenate motor values into uart_send.bytes
     std::memcpy(&uart_send.bytes[0], motor1.data(), 2);
@@ -327,6 +343,9 @@ int main() {
         if( leftStickX || leftStickY || rightStickX || rightStickY ){
             uart_send = updateUARTNum(leftStickX, leftStickY, rightStickX, rightStickY);
         }
+        else{
+            uart_send = { .bytes = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+        }
 
         // Reset timer with the 'Back' button
         if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_BACK)) {
@@ -364,7 +383,7 @@ int main() {
         cv::imshow("Camera Output", frame);
 
         // Wait a short time to reduce CPU load
-        cv::waitKey(30);
+        cv::waitKey(1000);
     }
 
     // Clean up
