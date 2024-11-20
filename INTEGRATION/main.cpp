@@ -161,30 +161,35 @@ void handleToggle(SDL_GameController* controller, bool& toggleState, std::string
 auto convertToMotorBytes = [](int value) -> std::array<uint8_t, 2> {
     std::array<uint8_t, 2> result;
 
-    // Clamp the value to fit within 12 bits
-    if (value > 4095) value = 4095;   // Max positive value in 12 bits
-    if (value < -4095) value = -4095; // Max negative value in 12 bits
-
-    // Encode the sign in the top 4 bits and the magnitude in the remaining 12 bits
-    if (value >= 0) {
-        result[0] = (value >> 8) & 0x0F; // Upper 4 bits of the value
-        result[0] |= 0xF0;               // Set the top 4 bits to indicate positive
+    if (value > 0) {
+        result[0] = 0xFF; // Top byte for positive values
+        result[1] = 0xFF; // Bottom byte for non-zero values
+    } else if (value < 0) {
+        result[0] = 0x00; // Top byte for negative values
+        result[1] = 0xFF; // Bottom byte for non-zero values
     } else {
-        value = -value;                  // Convert to positive for encoding
-        result[0] = (value >> 8) & 0x0F; // Upper 4 bits of the value
-        result[0] |= 0x00;               // Set the top 4 bits to indicate negative
+        result[0] = 0x00; // Top byte for zero
+        result[1] = 0x00; // Bottom byte for zero
     }
-
-    result[1] = value & 0xFF;            // Lower 8 bits of the value
 
     return result;
 };
 
+
 uint96_t updateUARTNum_hardcode(int leftStickX, int leftStickY, int rightStickX, int rightStickY, int dpad_left, int dpad_right, int dpad_up, int dpad_down) {
     uint96_t uart_send;
     
+    
     // Define motors as arrays to hold the two bytes for each motor
-    std::array<uint8_t, 2> motor1, motor2, motor3, motor4, motor5, motor6;
+    // std::array<uint8_t, 2> motor1, motor2, motor3, motor4, motor5, motor6;
+
+    std::array<uint8_t, 2> motor1 = {0x00, 0x00};
+    std::array<uint8_t, 2> motor2 = {0x00, 0x00};
+    std::array<uint8_t, 2> motor3 = {0x00, 0x00};
+    std::array<uint8_t, 2> motor4 = {0x00, 0x00};
+    std::array<uint8_t, 2> motor5 = {0x00, 0x00};
+    std::array<uint8_t, 2> motor6 = {0x00, 0x00};
+
 
     // Convert stick values to motor bytes
     // motor1 = convertToMotorBytes(leftStickX);
@@ -212,24 +217,26 @@ uint96_t updateUARTNum_hardcode(int leftStickX, int leftStickY, int rightStickX,
     //     motor6 = convertToMotorBytes(-90);
     // }
 
-    // test individual motors
-    if( leftStickX > 0  ){ motor1 = convertToMotorBytes(-90); }
-    if( leftStickX < 0 ){ motor1 = convertToMotorBytes(90); }
+    // Update motor values based on joystick inputs
+    motor1 = (leftStickX > 0) ? convertToMotorBytes(-90) : 
+             (leftStickX < 0) ? convertToMotorBytes(90) : motor1;
 
-    if( leftStickY > 0  ){ motor2 = convertToMotorBytes(-90); }
-    if( leftStickY < 0 ){ motor2 = convertToMotorBytes(90); }
+    motor2 = (leftStickY > 0) ? convertToMotorBytes(-90) : 
+             (leftStickY < 0) ? convertToMotorBytes(90) : motor2;
 
-    if( rightStickX > 0  ){ motor3 = convertToMotorBytes(-90); }
-    if( rightStickX < 0 ){ motor3 = convertToMotorBytes(90); }
+    motor3 = (rightStickX > 0) ? convertToMotorBytes(-90) : 
+             (rightStickX < 0) ? convertToMotorBytes(90) : motor3;
 
-    if( rightStickY > 0  ){ motor4 = convertToMotorBytes(-90); }
-    if( rightStickY < 0 ){ motor4 = convertToMotorBytes(90); }
+    motor4 = (rightStickY > 0) ? convertToMotorBytes(-90) : 
+             (rightStickY < 0) ? convertToMotorBytes(90) : motor4;
 
-    if( dpad_left > 0  ){ motor5 = convertToMotorBytes(-90); }
-    if( dpad_right < 0 ){ motor5 = convertToMotorBytes(90); }
+    // Update motor values based on D-pad inputs
+    motor5 = (dpad_left > 0) ? convertToMotorBytes(-90) : 
+             (dpad_right > 0) ? convertToMotorBytes(90) : motor5;
 
-    if( dpad_up > 0  ){ motor6 = convertToMotorBytes(-90); }
-    if( dpad_down < 0 ){ motor6 = convertToMotorBytes(90); }
+    motor6 = (dpad_up > 0) ? convertToMotorBytes(-90) : 
+             (dpad_down > 0) ? convertToMotorBytes(90) : motor6;
+
 
     // Concatenate motor values into uart_send.bytes
     std::memcpy(&uart_send.bytes[0], motor1.data(), 2);
