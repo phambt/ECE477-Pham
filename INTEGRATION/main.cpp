@@ -25,8 +25,8 @@ int configureUART(int uart_fd) {
     tcgetattr(uart_fd, &options); // Get current port attributes
 
     // Set baud rate to match STM32 settings
-    cfsetispeed(&options, B9600); // Input baud rate
-    cfsetospeed(&options, B9600); // Output baud rate
+    cfsetispeed(&options, B1152000); // Input baud rate
+    cfsetospeed(&options, B1152000); // Output baud rate
 
     options.c_cflag &= ~PARENB;    // No parity
     options.c_cflag &= ~CSTOPB;    // 1 stop bit
@@ -180,7 +180,7 @@ auto convertToMotorBytes = [](int value) -> std::array<uint8_t, 2> {
     return result;
 };
 
-uint96_t updateUARTNum(int leftStickX, int leftStickY, int rightStickX, int rightStickY) {
+uint96_t updateUARTNum_hardcode(int leftStickX, int leftStickY, int rightStickX, int rightStickY, int dpad_left, int dpad_right, int dpad_up, int dpad_down) {
     uint96_t uart_send;
     
     // Define motors as arrays to hold the two bytes for each motor
@@ -195,16 +195,41 @@ uint96_t updateUARTNum(int leftStickX, int leftStickY, int rightStickX, int righ
     // motor6 = convertToMotorBytes(rightStickX + rightStickY);
 
     // Test with 90 degrees for each motor
-    // motor1 = convertToMotorBytes(180);
-    if( leftStickX | leftStickY ){ motor1 = convertToMotorBytes(180); }
-    else{ 
-        motor1 = convertToMotorBytes(-180);
-    }
-    motor2 = convertToMotorBytes(90);
-    motor3 = convertToMotorBytes(180);
-    motor4 = convertToMotorBytes(-45);
-    motor5 = convertToMotorBytes(-90);
-    motor6 = convertToMotorBytes(-180);
+    // if( leftStickX | leftStickY ){ 
+    //     motor1 = convertToMotorBytes(180); 
+    //     motor2 = convertToMotorBytes(90);
+    //     motor3 = convertToMotorBytes(180);
+    //     motor4 = convertToMotorBytes(90);
+    //     motor5 = convertToMotorBytes(180);
+    //     motor6 = convertToMotorBytes(90);
+    // }
+    // else{ 
+    //     motor1 = convertToMotorBytes(-180); 
+    //     motor2 = convertToMotorBytes(-90);
+    //     motor3 = convertToMotorBytes(-180);
+    //     motor4 = convertToMotorBytes(-90);
+    //     motor5 = convertToMotorBytes(-180);
+    //     motor6 = convertToMotorBytes(-90);
+    // }
+
+    // test individual motors
+    if( leftStickX > 0  ){ motor1 = convertToMotorBytes(-90); }
+    if( leftStickX < 0 ){ motor1 = convertToMotorBytes(90); }
+
+    if( leftStickY > 0  ){ motor2 = convertToMotorBytes(-90); }
+    if( leftStickY < 0 ){ motor2 = convertToMotorBytes(90); }
+
+    if( rightStickX > 0  ){ motor3 = convertToMotorBytes(-90); }
+    if( rightStickX < 0 ){ motor3 = convertToMotorBytes(90); }
+
+    if( rightStickY > 0  ){ motor4 = convertToMotorBytes(-90); }
+    if( rightStickY < 0 ){ motor4 = convertToMotorBytes(90); }
+
+    if( dpad_left > 0  ){ motor5 = convertToMotorBytes(-90); }
+    if( dpad_right < 0 ){ motor5 = convertToMotorBytes(90); }
+
+    if( dpad_up > 0  ){ motor6 = convertToMotorBytes(-90); }
+    if( dpad_down < 0 ){ motor6 = convertToMotorBytes(90); }
 
     // Concatenate motor values into uart_send.bytes
     std::memcpy(&uart_send.bytes[0], motor1.data(), 2);
@@ -334,14 +359,19 @@ int main() {
         int rightStickX = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTX);
         int rightStickY = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTY);
 
+        int dpad_left = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
+        int dpad_right = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+        int dpad_up = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_UP);
+        int dpad_down = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+
         // Apply deadzone filtering to prevent slight joystick drift
         if (abs(leftStickX) < JOYSTICK_DEADZONE) leftStickX = 0;
         if (abs(leftStickY) < JOYSTICK_DEADZONE) leftStickY = 0;
         if (abs(rightStickX) < JOYSTICK_DEADZONE) rightStickX = 0;
         if (abs(rightStickY) < JOYSTICK_DEADZONE) rightStickY = 0;
 
-        if( leftStickX || leftStickY || rightStickX || rightStickY ){
-            uart_send = updateUARTNum(leftStickX, leftStickY, rightStickX, rightStickY);
+        if( leftStickX || leftStickY || rightStickX || rightStickY || dpad_left || dpad_right || dpad_up || dpad_down ){
+            uart_send = updateUARTNum_hardcode(leftStickX, leftStickY, rightStickX, rightStickY, dpad_left, dpad_right, dpad_up, dpad_down);
         }
         else{
             uart_send = { .bytes = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
