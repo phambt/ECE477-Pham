@@ -11,6 +11,10 @@
 #include <unistd.h>     // For read/write
 #include <cstring>      // For memset
 
+#include <cmath> // For M_PI and conversion
+#include "ik_caller.cpp"
+
+
 int SIZE = 12;
 
 // Struct for 12 bytes of data
@@ -218,14 +222,14 @@ uint96_t updateUARTNum_hardcode(int leftStickX, int leftStickY, int rightStickX,
     // }
 
     // Update motor values based on joystick inputs
-    motor1 = (leftStickX > 0) ? convertToMotorBytes(-90) : 
-             (leftStickX < 0) ? convertToMotorBytes(90) : motor1;
+    motor1 = (leftStickX < 0) ? convertToMotorBytes(-90) : 
+             (leftStickX > 0) ? convertToMotorBytes(90) : motor1;
 
     motor2 = (leftStickY > 0) ? convertToMotorBytes(-90) : 
              (leftStickY < 0) ? convertToMotorBytes(90) : motor2;
 
-    motor3 = (rightStickX > 0) ? convertToMotorBytes(-90) : 
-             (rightStickX < 0) ? convertToMotorBytes(90) : motor3;
+    motor3 = (rightStickX < 0) ? convertToMotorBytes(-90) : 
+             (rightStickX > 0) ? convertToMotorBytes(90) : motor3;
 
     motor4 = (rightStickY > 0) ? convertToMotorBytes(-90) : 
              (rightStickY < 0) ? convertToMotorBytes(90) : motor4;
@@ -315,10 +319,17 @@ int main() {
     auto startTime = std::chrono::steady_clock::now();
     int elapsedTime = 0;
 
+    double position[3] = {0, 0, 0.66};
+    double previousPosition[3] = {0, 0, 0.66};
+
+    std::vector<double> previousJointAngles = {0.0, 0.0, 0.0};
+    
+    auto lastCallTime = std::chrono::steady_clock::now();
+
     while (!quit) {
         // ** UART
-        sendMessage(uart_fd, uart_send);
-        receiveMessage(uart_fd);
+        // sendMessage(uart_fd, uart_send);
+        // receiveMessage(uart_fd);
 
         // ** Controller & Camera
         // Handle SDL events
@@ -359,29 +370,91 @@ int main() {
                 elapsedTime += std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - startTime).count();
             }
         }
+        /////// FOR BACK UPPPPPPPPPPPPPPPPPPPPPPPP /////////////////
+
 
         // Handle Joystick input's
-        int leftStickX = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTX);
-        int leftStickY = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY);
-        int rightStickX = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTX);
-        int rightStickY = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTY);
+        // int leftStickX = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTX);
+        // int leftStickY = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY);
+        // int rightStickX = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTX);
+        // int rightStickY = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTY);
 
-        int dpad_left = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
-        int dpad_right = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
-        int dpad_up = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_UP);
-        int dpad_down = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+        // int dpad_left = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
+        // int dpad_right = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+        // int dpad_up = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_UP);
+        // int dpad_down = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
 
-        // Apply deadzone filtering to prevent slight joystick drift
-        if (abs(leftStickX) < JOYSTICK_DEADZONE) leftStickX = 0;
-        if (abs(leftStickY) < JOYSTICK_DEADZONE) leftStickY = 0;
-        if (abs(rightStickX) < JOYSTICK_DEADZONE) rightStickX = 0;
-        if (abs(rightStickY) < JOYSTICK_DEADZONE) rightStickY = 0;
+        // // Apply deadzone filtering to prevent slight joystick drift
+        // if (abs(leftStickX) < JOYSTICK_DEADZONE) leftStickX = 0;
+        // if (abs(leftStickY) < JOYSTICK_DEADZONE) leftStickY = 0;
+        // if (abs(rightStickX) < JOYSTICK_DEADZONE) rightStickX = 0;
+        // if (abs(rightStickY) < JOYSTICK_DEADZONE) rightStickY = 0;
 
-        if( leftStickX || leftStickY || rightStickX || rightStickY || dpad_left || dpad_right || dpad_up || dpad_down ){
-            uart_send = updateUARTNum_hardcode(leftStickX, leftStickY, rightStickX, rightStickY, dpad_left, dpad_right, dpad_up, dpad_down);
+        // if( leftStickX || leftStickY || rightStickX || rightStickY || dpad_left || dpad_right || dpad_up || dpad_down ){
+        //     uart_send = updateUARTNum_hardcode(leftStickX, leftStickY, rightStickX, rightStickY, dpad_left, dpad_right, dpad_up, dpad_down);
+        // }
+        // else{
+        //     uart_send = { .bytes = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+        // }
+
+        /////// erm /////////////////
+        
+        double xAxis = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTX);
+        double yAxis = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY);        
+
+        if (std::abs(xAxis) > JOYSTICK_DEADZONE) {
+            position[0] = position[0] + xAxis / 10000000; // Scale down for display
+        } 
+        if (std::abs(yAxis) > JOYSTICK_DEADZONE) {
+            position[1] = position[1] - yAxis / 10000000; // Scale down for display
+        } 
+
+
+        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_UP)) {
+            position[2] += 0.001; // Increase z
         }
-        else{
-            uart_send = { .bytes = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN)) {
+            position[2] -= 0.001; // Decrease z
+        }
+        
+        // Check if position has changed
+        if (position[0] != previousPosition[0] ||
+            position[1] != previousPosition[1] ||
+            position[2] != previousPosition[2]) {
+
+            // Throttle calls to Python
+            if (std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - lastCallTime).count() > 100) {
+                lastCallTime = std::chrono::steady_clock::now();
+
+                // Update previousPosition
+                previousPosition[0] = position[0];
+                previousPosition[1] = position[1];
+                previousPosition[2] = position[2];
+
+                // Call the Python function
+                std::vector<double> jointAngles = call_getAngle(position[0], position[1], position[2]);
+
+                
+                if (!jointAngles.empty()) {
+                    std::cout << "Delta joint angles (in degrees):" << std::endl;
+
+                    for (size_t i = 0; i < jointAngles.size(); ++i) {
+                        double currentAngleInDegrees = jointAngles[i] * (180.0 / M_PI); // Convert to degrees
+                        double previousAngleInDegrees = previousJointAngles[i] * (180.0 / M_PI); // Convert to degrees
+                        double deltaAngle = currentAngleInDegrees - previousAngleInDegrees;
+
+                        // Print delta angle
+                        std::cout << "Joint " << i + 1 << ": " << deltaAngle << " degrees" << std::endl;
+
+                        // Update previousJointAngles
+                        previousJointAngles[i] = jointAngles[i];
+                    }
+                    std::cout << std::endl;
+                } else {
+                    std::cerr << "Failed to retrieve joint angles!" << std::endl;
+                }
+            }
         }
 
         // Reset timer with the 'Back' button
@@ -420,7 +493,7 @@ int main() {
         cv::imshow("Camera Output", frame);
 
         // Wait a short time to reduce CPU load
-        cv::waitKey(1000);
+        cv::waitKey(30);
     }
 
     // Clean up
