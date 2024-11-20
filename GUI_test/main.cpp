@@ -104,6 +104,8 @@ int main() {
     double position[3] = {0, 0, 0.5};
     double previousPosition[3] = {0, 0, 0.5};
 
+    auto lastCallTime = std::chrono::steady_clock::now();
+
     while (!quit) {
         // Handle SDL events
         SDL_Event e;
@@ -129,36 +131,35 @@ int main() {
         if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN)) {
             position[2] -= 0.001; // Decrease z
         }
-        auto lastCallTime = std::chrono::steady_clock::now();
-
+        
         // Check if position has changed
-        if (position[0] != previousPosition[0] || 
-            position[1] != previousPosition[1] || 
+        if (position[0] != previousPosition[0] ||
+            position[1] != previousPosition[1] ||
             position[2] != previousPosition[2]) {
-            
-            // Print updated position
-            std::cout << "[" << position[0] << ", " << position[1] << ", " << position[2] << "]" << std::endl;
 
-            // Update previousPosition
-            previousPosition[0] = position[0];
-            previousPosition[1] = position[1];
-            previousPosition[2] = position[2];
+            // Throttle calls to Python
+            if (std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - lastCallTime).count() > 100) {
+                lastCallTime = std::chrono::steady_clock::now();
 
-            double x = position[0], y = position[1], z = position[2]; // Example coordinates
+                // Update previousPosition
+                previousPosition[0] = position[0];
+                previousPosition[1] = position[1];
+                previousPosition[2] = position[2];
 
-            // Call the function from Folder1/main.cpp
-            std::vector<double> jointAngles = call_getAngle(x, y, z);
+                // Call the Python function
+                std::vector<double> jointAngles = call_getAngle(position[0], position[1], position[2]);
 
-            if (!jointAngles.empty()) {
-                std::cout << "Joint angles returned from Python function:" << std::endl;
-                for (double angle : jointAngles) {
-                    std::cout << angle << " ";
+                if (!jointAngles.empty()) {
+                    std::cout << "Joint angles returned from Python function:" << std::endl;
+                    for (double angle : jointAngles) {
+                        std::cout << angle << " ";
+                    }
+                    std::cout << std::endl;
+                } else {
+                    std::cerr << "Failed to retrieve joint angles!" << std::endl;
                 }
-                std::cout << std::endl;
-            } else {
-                std::cerr << "Failed to retrieve joint angles!" << std::endl;
             }
-
         }
 
 
@@ -230,7 +231,7 @@ int main() {
         cv::imshow("Camera Output", frame);
 
         // Wait a short time to reduce CPU load
-        cv::waitKey(300);
+        cv::waitKey(30);
     }
 
     // Clean up
