@@ -500,20 +500,24 @@ int main() {
                         deltaAngles[i] = static_cast<int>(std::round(deltaAngle));
 
                         // Print rounded delta angle
-                        // std::cout << "Joint " << i + 1 << ": " << roundedDeltaAngle << " degrees" << std::endl;
+                        std::cout << "Joint " << i + 1 << ": " << deltaAngle << " degrees" << std::endl;
 
                         // Update previousJointAngles
                         previousJointAngles[i] = jointAngles[i];
                     }
 
-                    int m1, m4, m6 = 0;
-                    int m2 = deltaAngles[0]; // Joint angle delta for m2
+                    int m4 = 0;              // end effector doesn't inverse kinematics
+                    int m6 = deltaAngles[0]; // Joint angle delta for m6
                     int m3 = deltaAngles[1]; // Joint angle delta for m3
-                    int m5 = deltaAngles[2]; // Joint angle delta for m5
+                    int m2 = deltaAngles[2]; // Joint angle delta for m2
+                    int m5 = deltaAngles[3]; // Joint angle delta for m5
+                    int m1 = deltaAngles[4]; // Joint angle delta for m1
 
                     // Create the UART data packet
                     // uint96_t uart_send = updateUARTNum_IK(m1, m2, m3, m4, m5, m6);
-                    uart_send = updateUARTNum_IK(m1, m2, m3, m4, m5, m6);
+                    // uart_send = updateUARTNum_IK(m1, m2, m3, m4, m5, m6);
+                     uart_send = { .bytes = { 0xff, 0xff, 0xff } };
+
                     // uart_send = { .bytes = { 0xAA, 0xBB, 0xCC } };
 
                     // Print the UART packet in hexadecimal format
@@ -570,13 +574,13 @@ int main() {
 
 
         sendMessage(uart_fd, uart_send);
-        receiveMessage(uart_fd);
+        // receiveMessage(uart_fd);
 
         // Show the frame
         cv::imshow("Camera Output", frame);
 
         // Wait a short time to reduce CPU load
-        cv::waitKey(30);
+        cv::waitKey(300);
     }
 
     // Clean up

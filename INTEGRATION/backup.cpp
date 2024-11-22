@@ -126,7 +126,9 @@ std::map<int, std::string> buttonLookup = {
     {SDL_CONTROLLER_BUTTON_DPAD_UP, "D-Pad Up"},
     {SDL_CONTROLLER_BUTTON_DPAD_DOWN, "D-Pad Down"},
     {SDL_CONTROLLER_BUTTON_DPAD_LEFT, "D-Pad Left"},
-    {SDL_CONTROLLER_BUTTON_DPAD_RIGHT, "D-Pad Right"}
+    {SDL_CONTROLLER_BUTTON_DPAD_RIGHT, "D-Pad Right"},
+    {SDL_CONTROLLER_AXIS_TRIGGERLEFT, "Left Trigger"},
+    {SDL_CONTROLLER_AXIS_TRIGGERRIGHT, "Right Trigger"}
 };
 
 // Function to handle toggling based on bumper buttons
@@ -176,7 +178,7 @@ auto convertToMotorBytes = [](int value) -> std::array<uint8_t, 2> {
 };
 
 
-uint96_t updateUARTNum_hardcode(int leftStickX, int leftStickY, int rightStickX, int rightStickY, int dpad_left, int dpad_right, int dpad_up, int dpad_down) {
+uint96_t updateUARTNum_hardcode(int leftStickX, int leftStickY, int rightStickX, int rightStickY, int dpad_left, int dpad_right, int left_trig, int right_trig) {
     uint96_t uart_send;
     
     
@@ -217,26 +219,24 @@ uint96_t updateUARTNum_hardcode(int leftStickX, int leftStickY, int rightStickX,
     //     motor6 = convertToMotorBytes(-90);
     // }
 
-    // Update motor values based on joystick inputs
-    motor1 = (leftStickX > 0) ? convertToMotorBytes(-90) : 
-             (leftStickX < 0) ? convertToMotorBytes(90) : motor1;
+    // new keybinds for hanna <3
+    motor1 = (dpad_left > 0) ? convertToMotorBytes(-90) : //wrist
+             (dpad_right > 0) ? convertToMotorBytes(90) : motor1;
 
-    motor2 = (leftStickY > 0) ? convertToMotorBytes(-90) : 
+    motor2 = (leftStickY > 0) ? convertToMotorBytes(-90) : //elbow
              (leftStickY < 0) ? convertToMotorBytes(90) : motor2;
 
-    motor3 = (rightStickX > 0) ? convertToMotorBytes(-90) : 
-             (rightStickX < 0) ? convertToMotorBytes(90) : motor3;
+    motor3 = (rightStickY > 0) ? convertToMotorBytes(-90) : //shoulder
+             (rightStickY < 0) ? convertToMotorBytes(90) : motor3;
 
-    motor4 = (rightStickY > 0) ? convertToMotorBytes(-90) : 
-             (rightStickY < 0) ? convertToMotorBytes(90) : motor4;
+    motor4 = (left_trig > 0) ? convertToMotorBytes(-90) : //endefector
+             (right_trig > 0) ? convertToMotorBytes(90) : motor4;
 
-    // Update motor values based on D-pad inputs
-    motor5 = (dpad_left > 0) ? convertToMotorBytes(-90) : 
-             (dpad_right > 0) ? convertToMotorBytes(90) : motor5;
-
-    motor6 = (dpad_up > 0) ? convertToMotorBytes(-90) : 
-             (dpad_down > 0) ? convertToMotorBytes(90) : motor6;
-
+    motor5 = (leftStickX > 0) ? convertToMotorBytes(-90) : //forearm
+             (leftStickX < 0) ? convertToMotorBytes(90) : motor5;
+        
+    motor6 = (rightStickX > 0) ? convertToMotorBytes(-90) : //base
+             (rightStickX < 0) ? convertToMotorBytes(90) : motor6;
 
     // Concatenate motor values into uart_send.bytes
     std::memcpy(&uart_send.bytes[0], motor1.data(), 2);
@@ -318,7 +318,7 @@ int main() {
     while (!quit) {
         // ** UART
         sendMessage(uart_fd, uart_send);
-        receiveMessage(uart_fd);
+        // receiveMessage(uart_fd);
 
         // ** Controller & Camera
         // Handle SDL events
@@ -368,8 +368,10 @@ int main() {
 
         int dpad_left = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
         int dpad_right = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
-        int dpad_up = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_UP);
-        int dpad_down = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+        // int dpad_up = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_UP);
+        // int dpad_down = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+        int left_trig = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
+        int right_trig = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
 
         // Apply deadzone filtering to prevent slight joystick drift
         if (abs(leftStickX) < JOYSTICK_DEADZONE) leftStickX = 0;
@@ -377,8 +379,8 @@ int main() {
         if (abs(rightStickX) < JOYSTICK_DEADZONE) rightStickX = 0;
         if (abs(rightStickY) < JOYSTICK_DEADZONE) rightStickY = 0;
 
-        if( leftStickX || leftStickY || rightStickX || rightStickY || dpad_left || dpad_right || dpad_up || dpad_down ){
-            uart_send = updateUARTNum_hardcode(leftStickX, leftStickY, rightStickX, rightStickY, dpad_left, dpad_right, dpad_up, dpad_down);
+        if( leftStickX || leftStickY || rightStickX || rightStickY || dpad_left || dpad_right || left_trig || right_trig ){
+            uart_send = updateUARTNum_hardcode(leftStickX, leftStickY, rightStickX, rightStickY, dpad_left, dpad_right, left_trig, right_trig);
         }
         else{
             uart_send = { .bytes = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
@@ -420,7 +422,7 @@ int main() {
         cv::imshow("Camera Output", frame);
 
         // Wait a short time to reduce CPU load
-        cv::waitKey(600);
+        cv::waitKey(30);
     }
 
     // Clean up

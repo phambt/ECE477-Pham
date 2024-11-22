@@ -15,12 +15,16 @@
 #include "ik_caller.cpp"
 
 
-int SIZE = 12;
+int SIZE = 4;
 
 // Struct for 12 bytes of data
 typedef struct {
     uint8_t bytes[12];
 } uint96_t;
+
+typedef struct {
+    uint8_t bytes[4];
+} uint32_t_custom;
 
 // ** UART FUNCTIONS **
 // Function to configure UART for both Jetson and STM32
@@ -56,32 +60,30 @@ int configureUART(int uart_fd) {
 }
 
 // Function to send a 16-bit number (two bytes) to STM32
-void sendMessage(int uart_fd, uint96_t number) {
+void sendMessage(int uart_fd, uint32_t_custom number) {
     uint8_t buffer[SIZE];
 
     // Copy each byte from the struct into the buffer
     for (int i = 0; i < SIZE; i++) {
-        buffer[i] = number.bytes[i]; // Extract each byte
+        buffer[i] = number.bytes[i];
     }
 
-    // Clear the UART output buffer to avoid data clogs
-    tcflush(uart_fd, TCOFLUSH);
+    // Debug: Print buffer contents before writing
+    std::cout << "Buffer to send: ";
+    for (int i = 0; i < SIZE; ++i) {
+        std::cout << std::hex << std::setw(2) << std::setfill('0')
+                  << static_cast<int>(buffer[i]) << " ";
+    }
+    std::cout << std::endl;
 
-    // Send all 8 bytes together as a single buffer
+    // Flush and send the buffer
+    tcflush(uart_fd, TCOFLUSH);
     ssize_t bytes_written = write(uart_fd, buffer, SIZE);
     if (bytes_written != SIZE) {
-        std::cerr << "Failed to write 8 bytes to UART" << std::endl;
-    } 
-    else {
-        std::cout << "Sending number: "; // Print out the num were sending (debugging)
-        for( int i = 0; i < SIZE; i++ ){
-            std::cout << " " << std::hex << static_cast<int>(buffer[i]) << std::dec;
-        }
-        std::cout << std::endl;
+        std::cerr << "Failed to write all bytes to UART. Written: " << bytes_written << std::endl;
     }
-
-    // usleep(100000); // Delay of 100ms after each send attempt
 }
+
 
 
 
@@ -104,7 +106,7 @@ bool receiveMessage(int uart_fd) {
 
         return true; // Data was received
     } else {
-        std::cerr << "Failed to read 12 bytes from UART or insufficient data received" << std::endl;
+        std::cerr << "Failed to read bytes from UART or insufficient data received" << std::endl;
         return false; // No data was received
     }
 }
@@ -253,43 +255,44 @@ void handleToggle(SDL_GameController* controller, bool& toggleState, std::string
 //     return uart_send;
 // }
 
-uint96_t updateUARTNum_IK(int m1, int m2, int m3, int m4, int m5, int m6) {
-    uint96_t uart_send = { .bytes = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+uint32_t_custom updateUARTNum_IK(int m1, int m2, int m3, int m4, int m5, int m6) {
+    uint32_t_custom uart_send = { .bytes = { 0x00, 0x00, 0x00, 0x00 } };
 
-    // Clamp motor values
+    // Clamp motor values manually
     m1 = (m1 < 0) ? -1 : (m1 > 0) ? 1 : 0;  // On/off directional motor
     m4 = (m4 < 0) ? -1 : (m4 > 0) ? 1 : 0;  // On/off directional motor
 
-    m2 = (m2 < -15) ? -15 : (m2 > 15) ? 15 : m2; // Clamp to -15 to 15
-    m3 = (m3 < -15) ? -15 : (m3 > 15) ? 15 : m3; // Clamp to -15 to 15
-    m5 = (m5 < -15) ? -15 : (m5 > 15) ? 15 : m5; // Clamp to -15 to 15
-    m6 = (m6 < -15) ? -15 : (m6 > 15) ? 15 : m6; // Clamp to -15 to 15
+    m2 = (m2 < -31) ? -31 : (m2 > 31) ? 31 : m2; // Clamp to -15 to 15
+    m3 = (m3 < -31) ? -31 : (m3 > 31) ? 31 : m3; // Clamp to -15 to 15
+    m5 = (m5 < -31) ? -31 : (m5 > 31) ? 31 : m5; // Clamp to -15 to 15
+    m6 = (m6 < -31) ? -31 : (m6 > 31) ? 31 : m6; // Clamp to -15 to 15
 
-    // Create the 3-byte packet based on the described format
-    uint8_t RxData[3] = {0x00, 0x00, 0x00};
+    // Create the 4-byte packet based on the described format
+    uint8_t RxData[4] = {0x00, 0x00, 0x00, 0x00};
 
-    // Encode m1 into bits 8 & 7 of RxData[2]
-    RxData[2] |= (m1 > 0 ? 0b10 : m1 < 0 ? 0b01 : 0b00) << 6;
+    // Encode m1 into bits 1-6 of RxData[0]
+    RxData[0] |= (std::abs(m1) & 0x3F); 
 
-    // Encode m2 into bits 6, 5, 4, 3, 2 of RxData[2]
-    RxData[2] |= (std::abs(m2) & 0x1F) << 1;
+    // Encode m2 into bits 7-8 of RxData[0] and bits 1-4 of RxData[1]
+    RxData[0] |= ((std::abs(m2) & 0x03) << 6); // Bits 7-8
+    RxData[1] |= ((std::abs(m2) & 0x1C) >> 2); // Bits 1-4
 
-    // Encode m3 into bit 1 of RxData[2] and bits 8, 7, 6, 5 of RxData[1]
-    RxData[2] |= (std::abs(m3) & 0x10) >> 4; // Bit 1
-    RxData[1] |= (std::abs(m3) & 0x0F) << 4; // Bits 8, 7, 6, 5
+    // Encode m3 into bits 5-8 of RxData[1] and bits 1-2 of RxData[2]
+    RxData[1] |= ((std::abs(m3) & 0x10) >> 4); // Bits 5-8
+    RxData[2] |= ((std::abs(m3) & 0x0F) << 4); // Bits 1-2
 
-    // Encode m4 into bits 4, 3 of RxData[1]
-    RxData[1] |= (m4 > 0 ? 0b10 : m4 < 0 ? 0b01 : 0b00) << 2;
+    // Encode m4 into bits 3-4 of RxData[2]
+    RxData[2] |= ((m4 > 0 ? 0b10 : m4 < 0 ? 0b01 : 0b00) << 2); // Bits 3-4
 
-    // Encode m5 into bits 2, 1 of RxData[1] and bits 8, 7, 6 of RxData[0]
-    RxData[1] |= (std::abs(m5) & 0x10) >> 3; // Bits 2, 1
-    RxData[0] |= (std::abs(m5) & 0x0F) << 5; // Bits 8, 7, 6
+    // Encode m5 into bits 5-8 of RxData[2] and bits 1-2 of RxData[3]
+    RxData[2] |= ((std::abs(m5) & 0x10) >> 3); // Bits 5-8
+    RxData[3] |= ((std::abs(m5) & 0x0F) << 5); // Bits 1-2
 
-    // Encode m6 into bits 5, 4, 3, 2, 1 of RxData[0]
-    RxData[0] |= (std::abs(m6) & 0x1F);
+    // Encode m6 into bits 3-8 of RxData[3]
+    RxData[3] |= ((std::abs(m6) & 0x3F)); // Bits 3-8
 
-    // Pack the bytes into the uint96_t
-    std::memcpy(&uart_send, RxData, 3);
+    // Pack the bytes into the uint32_t_custom_custom structure
+    std::memcpy(&uart_send, RxData, 4);
 
     return uart_send;
 }
@@ -321,8 +324,11 @@ int main() {
     }
 
     // Example 16-bit number to send to STM32
-    uint96_t uart_send = { .bytes = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+    // uint96_t uart_send = { .bytes = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+    uint32_t_custom uart_send = { .bytes = { 0x00, 0x00, 0x00, 0x00 } };
     bool sending = true;
+    // Call the Python function
+    std::vector<double> jointAngles = call_getAngle(0, 0, 0.66);
 
     // ** Controller & Camera **
     // Initialize two cameras
@@ -369,6 +375,7 @@ int main() {
 
     while (!quit) {
         // ** UART
+        // uart_send = { .bytes = { 0xAA, 0xBB, 0xCC } };
         // sendMessage(uart_fd, uart_send);
         // receiveMessage(uart_fd);
 
@@ -491,34 +498,47 @@ int main() {
                         deltaAngles[i] = static_cast<int>(std::round(deltaAngle));
 
                         // Print rounded delta angle
-                        // std::cout << "Joint " << i + 1 << ": " << roundedDeltaAngle << " degrees" << std::endl;
+                        std::cout << "Joint " << i + 1 << ": " << deltaAngle << " degrees" << std::endl;
 
                         // Update previousJointAngles
                         previousJointAngles[i] = jointAngles[i];
                     }
 
-                    int m1, m4, m6 = 0;
-                    int m2 = deltaAngles[0]; // Joint angle delta for m2
+                    int m4 = 0;              // end effector doesn't inverse kinematics
+                    int m6 = deltaAngles[0]; // Joint angle delta for m6
                     int m3 = deltaAngles[1]; // Joint angle delta for m3
-                    int m5 = deltaAngles[2]; // Joint angle delta for m5
+                    int m2 = deltaAngles[2]; // Joint angle delta for m2
+                    int m5 = deltaAngles[3]; // Joint angle delta for m5
+                    int m1 = deltaAngles[4]; // Joint angle delta for m1
+
+                    // calculate previous position with rounded forward kinematics
+
+                    
+                    // position = call_getPosition(m6, m3, m2, m5, m1);
 
                     // Create the UART data packet
-                    uint96_t uart_send = updateUARTNum_IK(m1, m2, m3, m4, m5, m6);
+                    // uint96_t uart_send = updateUARTNum_IK(m1, m2, m3, m4, m5, m6);
+                    uart_send = updateUARTNum_IK(m1, m2, m3, m4, m5, m6);
+                    // uart_send = { .bytes = { 0xAA, 0xBB, 0xCC } };
 
                     // Print the UART packet in hexadecimal format
-                    std::cout << "UART Packet: ";
-                    uint8_t* packetBytes = reinterpret_cast<uint8_t*>(&uart_send);
-                    for (int i = 0; i < 3; ++i) {
-                        std::cout << std::hex << std::setw(2) << std::setfill('0') 
-                                << static_cast<int>(packetBytes[i]) << " ";
-                    }
+                    // std::cout << "UART Packet: ";
+                    // uint8_t* packetBytes = reinterpret_cast<uint8_t*>(&uart_send);
+                    // for (int i = 0; i < 3; ++i) {
+                    //     std::cout << std::hex << std::setw(2) << std::setfill('0') 
+                    //             << static_cast<int>(packetBytes[i]) << " ";
+                    // }
 
                     std::cout << std::endl;
+
 
                 } else {
                     std::cerr << "Failed to retrieve joint angles!" << std::endl;
                 }
             }
+        }
+        else{
+            uart_send = { .bytes = { 0x00, 0x00, 0x00, 0x00 } };
         }
 
         // Reset timer with the 'Back' button
@@ -553,11 +573,15 @@ int main() {
             quit = true;
         }
 
+
+        sendMessage(uart_fd, uart_send);
+        // receiveMessage(uart_fd);
+
         // Show the frame
         cv::imshow("Camera Output", frame);
 
         // Wait a short time to reduce CPU load
-        cv::waitKey(30);
+        cv::waitKey(600);
     }
 
     // Clean up
