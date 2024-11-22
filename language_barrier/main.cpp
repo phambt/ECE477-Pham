@@ -1,96 +1,54 @@
-#include <Python.h>
+#include <pybind11/embed.h> // Everything needed for embedding
 #include <iostream>
 #include <vector>
-#include <unistd.h>
 
-std::vector<double> call_getAngle(double x, double y, double z) {
-    std::vector<double> jointAngles;
+namespace py = pybind11;
 
-    // Change the current working directory to the 'ikpy' folder
-    if (chdir("../ikpy") != 0) {
-        perror("chdir failed");
-        return jointAngles; // Return an empty vector on error
+std::vector<double> getAngle(double x, double y, double z) {
+    std::cout << "Initializing Python..." << std::endl;
+    py::scoped_interpreter guard{};
+
+    std::cout << "Appending to sys.path..." << std::endl;
+    py::module_ sys = py::module_::import("sys");
+    sys.attr("path").attr("append")("/home/ece477/Desktop/477/ikpy");  // Use the absolute path
+
+    py::list paths = sys.attr("path");
+    for (auto path : paths) {
+        std::cout << py::str(path).cast<std::string>() << std::endl;
     }
 
-    // Initialize the Python interpreter
-    Py_Initialize();
+    sys.attr("path").attr("append")("../ikpy");
 
-    // Add the current directory (now 'ikpy') to Python's module search path
-    PyObject* sysPath = PySys_GetObject("path");
-    PyList_Append(sysPath, PyUnicode_FromString("."));
+    std::cout << "Importing jetson module..." << std::endl;
+    py::module_ jetson = py::module_::import("jetson");
 
-    // Load the Python module (jetson.py)
-    const char* scriptName = "jetson";
-    PyObject* pName = PyUnicode_DecodeFSDefault(scriptName);
-    PyObject* pModule = PyImport_Import(pName);
-    Py_DECREF(pName);
+    std::cout << "Calling getAngle function..." << std::endl;
+    py::list result = jetson.attr("getAngle")(x, y, z);
 
-    if (pModule != nullptr) {
-        PyObject* pFunc = PyObject_GetAttrString(pModule, "getAngle");
+    std::cout << "Parsing result..." << std::endl;
 
-        if (pFunc && PyCallable_Check(pFunc)) {
-            PyObject* pArgs = PyTuple_Pack(3, 
-                PyFloat_FromDouble(x), 
-                PyFloat_FromDouble(y), 
-                PyFloat_FromDouble(z));
 
-            PyObject* pValue = PyObject_CallObject(pFunc, pArgs);
-            Py_DECREF(pArgs);
-
-            if (pValue != nullptr) {
-                // Check if the returned value is a NumPy array
-                if (PyObject_HasAttrString(pValue, "tolist")) {
-                    // Convert NumPy array to Python list using tolist()
-                    PyObject* pList = PyObject_CallMethod(pValue, "tolist", nullptr);
-                    Py_DECREF(pValue); // Free the NumPy array
-
-                    if (pList && PyList_Check(pList)) {
-                        for (Py_ssize_t i = 0; i < PyList_Size(pList); ++i) {
-                            PyObject* item = PyList_GetItem(pList, i); // Borrowed reference
-                            jointAngles.push_back(PyFloat_AsDouble(item));
-                        }
-                    } else {
-                        std::cerr << "Error: Converted object is not a list!" << std::endl;
-                        PyErr_Print();
-                    }
-                    Py_XDECREF(pList); // Free the converted Python list
-                } else {
-                    std::cerr << "Error: Returned object does not have 'tolist' method!" << std::endl;
-                }
-            } else {
-                std::cerr << "Error: Python function call failed!" << std::endl;
-                PyErr_Print();
-            }
-
-            Py_DECREF(pFunc);
-        } else {
-            std::cerr << "Error: Python function 'getAngle' not callable or missing!" << std::endl;
-            PyErr_Print();
-        }
-
-        Py_DECREF(pModule);
-    } else {
-        std::cerr << "Error: Python module 'jetson' could not be loaded!" << std::endl;
-        PyErr_Print();
+    std::vector<double> angles;
+    for (auto item : result) {
+        angles.push_back(item.cast<double>());
     }
-
-    Py_Finalize();
-    return jointAngles;
+    return angles;
 }
 
-// int main() {
-//     double x = 0.2, y = 0.2, z = 0.0;
-//     std::vector<double> jointAngles = call_getAngle(x, y, z);
+int main() {
+    try {
+        double x = 0.5, y = 0.2, z = 0.3;
+        std::vector<double> angles = getAngle(x, y, z);
 
-//     if (!jointAngles.empty()) {
-//         std::cout << "Python function returned the following joint angles:" << std::endl;
-//         for (double angle : jointAngles) {
-//             std::cout << angle << " ";
-//         }
-//         std::cout << std::endl;
-//     } else {
-//         std::cerr << "Failed to retrieve joint angles." << std::endl;
-//     }
+        std::cout << "Joint angles: ";
+        for (double angle : angles) {
+            std::cout << angle << " ";
+        }
+        std::cout << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << e.what() << std::endl;
+        return 1;
+    }
 
-//     return 0;
-// }
+    return 0;
+}

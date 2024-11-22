@@ -34,8 +34,8 @@ int configureUART(int uart_fd) {
     tcgetattr(uart_fd, &options); // Get current port attributes
 
     // Set baud rate to match STM32 settings
-    cfsetispeed(&options, B1152000); // Input baud rate
-    cfsetospeed(&options, B1152000); // Output baud rate
+    cfsetispeed(&options, B500000); // Input baud rate
+    cfsetospeed(&options, B500000); // Output baud rate
 
     options.c_cflag &= ~PARENB;    // No parity
     options.c_cflag &= ~CSTOPB;    // 1 stop bit
@@ -255,6 +255,55 @@ void handleToggle(SDL_GameController* controller, bool& toggleState, std::string
 
 //     return uart_send;
 // }
+void send_ninety(int uart_fd, int motor) {
+    // Check that the motor number is valid (1-6)
+    if (motor < 1 || motor > 6) {
+        std::cerr << "Invalid motor number: " << motor << ". Must be between 1 and 6." << std::endl;
+        return;
+    }
+
+    // Create a 3-byte packet initialized to 0
+    uint24_t uart_send = { .bytes = { 0x00, 0x00, 0x00 } };
+
+    // Add the 90-degree command for the specified motor
+    // Encoding based on the described bit structure
+    switch (motor) {
+        case 1:
+            uart_send.bytes[2] |= 0b10 << 6; // m1 positive direction (bits 8 & 7 of RxData[2])
+            break;
+        case 2:
+            uart_send.bytes[2] |= (90 & 0x1F) << 1; // m2 (bits 6-2 of RxData[2])
+            break;
+        case 3:
+            uart_send.bytes[2] |= (90 & 0x10) >> 4; // Bit 1 of RxData[2]
+            uart_send.bytes[1] |= (90 & 0x0F) << 4; // Bits 8-5 of RxData[1]
+            break;
+        case 4:
+            uart_send.bytes[1] |= 0b11 << 2; // m4 positive direction (bits 4 & 3 of RxData[1])
+            break;
+        case 5:
+            uart_send.bytes[1] |= (90 & 0x10) >> 3; // Bits 2-1 of RxData[1]
+            uart_send.bytes[0] |= (90 & 0x0F) << 5; // Bits 8-6 of RxData[0]
+            break;
+        case 6:
+            uart_send.bytes[0] |= (90 & 0x1F); // m6 (bits 5-1 of RxData[0])
+            break;
+        default:
+            // This should never be reached due to the earlier check
+            break;
+    }
+
+    // Debug: Print the packet to be sent
+    std::cout << "Sending 90 degrees to motor " << motor << ": ";
+    for (int i = 0; i < 3; ++i) {
+        std::cout << std::hex << std::setw(2) << std::setfill('0')
+                  << static_cast<int>(uart_send.bytes[i]) << " ";
+    }
+    std::cout << std::endl;
+
+    // Send the packet over UART
+    sendMessage(uart_fd, uart_send);
+}
 
 uint24_t updateUARTNum_IK(int m1, int m2, int m3, int m4, int m5, int m6) {
     // uint96_t uart_send = { .bytes = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
@@ -368,8 +417,8 @@ int main() {
     auto startTime = std::chrono::steady_clock::now();
     int elapsedTime = 0;
 
-    double position[3] = {0, 0, 0.66};
-    double previousPosition[3] = {0, 0, 0.66};
+    double position[3] = {0.203, 0, 0.292};
+    double previousPosition[3] = {0.203, 0, 0.292};
 
     std::vector<double> previousJointAngles = {0.0, 0.0, 0.0};
     
@@ -506,7 +555,7 @@ int main() {
                         previousJointAngles[i] = jointAngles[i];
                     }
 
-                    int m4 = 0;              // end effector doesn't inverse kinematics
+                    int m4 = 1;              // end effector doesn't inverse kinematics
                     int m6 = deltaAngles[0]; // Joint angle delta for m6
                     int m3 = deltaAngles[1]; // Joint angle delta for m3
                     int m2 = deltaAngles[2]; // Joint angle delta for m2
@@ -515,10 +564,11 @@ int main() {
 
                     // Create the UART data packet
                     // uint96_t uart_send = updateUARTNum_IK(m1, m2, m3, m4, m5, m6);
-                    // uart_send = updateUARTNum_IK(m1, m2, m3, m4, m5, m6);
-                     uart_send = { .bytes = { 0xff, 0xff, 0xff } };
+                    uart_send = updateUARTNum_IK(m1, m2, m3, m4, m5, m6);
+                    //  uart_send = { .bytes = { 0xff, 0xff, 0xff } };
+                    // send_ninety(uart_fd, 4);
 
-                    // uart_send = { .bytes = { 0xAA, 0xBB, 0xCC } };
+                    // uart_send = { .bytes = { 0xAA, 0xBB, 0xCC} };
 
                     // Print the UART packet in hexadecimal format
                     // std::cout << "UART Packet: ";
